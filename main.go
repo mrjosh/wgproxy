@@ -55,7 +55,6 @@ func main() {
 		logger.Errorf(err.Error())
 		return
 	}
-
 	defer conn.Close()
 
 	logger.Verbosef("ListeningUDP on 0.0.0.0:13232")
@@ -69,20 +68,25 @@ func main() {
 
 func handle(sk *wg.NoisePrivateKey, conn *net.UDPConn) error {
 
+	peersPool := wg.NewPeers()
+
 	for {
 
-		buf := make([]byte, 1024)
-		n, _, err := conn.ReadFrom(buf)
+		var (
+			n           int
+			currentPeer *wg.Peer
+			buf         = make([]byte, wg.MaxSegmentSize)
+		)
+
+		n, addr, err := conn.ReadFrom(buf[:])
 		if err != nil {
-			continue
+			return err
 		}
 
+		// wireguard message type
 		msgType := binary.LittleEndian.Uint32(buf[:4])
 
-		switch msgType {
-
-		// 1 = MessageInitiationType
-		case wg.MessageInitiationType:
+		if msgType == wg.MessageInitiationType {
 
 			var msg wg.MessageInitiation
 			reader := bytes.NewReader(buf[:n])
@@ -122,9 +126,23 @@ func handle(sk *wg.NoisePrivateKey, conn *net.UDPConn) error {
 				return err
 			}
 
-			base64Key := base64.StdEncoding.EncodeToString(peerPK[:])
-			logger.Verbosef(base64Key)
+			currentPeer, err = wg.NewPeer(logger, conn, addr, peerPK)
 
+			if peersPool.Add(currentPeer) {
+				logger.Verbosef(
+					"(%s) [%s] - NewPeer",
+					currentPeer.IPAddress.String(),
+					currentPeer.PublicKey.String(),
+				)
+				currentPeer.Listen()
+			}
+
+		}
+
+		if peer, ok := peersPool.Exists(addr); ok {
+			if err := peer.WriteToRemote(buf[:n]); err != nil {
+				logger.Errorf(err.Error())
+			}
 		}
 
 	}

@@ -7,6 +7,7 @@ package wg
 
 import (
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 )
@@ -62,6 +63,10 @@ func (key *NoisePrivateKey) FromMaybeZeroHex(src string) (err error) {
 
 func (key *NoisePublicKey) FromHex(src string) error {
 	return loadExactHex(key[:], src)
+}
+
+func (key *NoisePublicKey) String() string {
+	return base64.StdEncoding.EncodeToString(key[:])
 }
 
 func (key NoisePublicKey) IsZero() bool {
